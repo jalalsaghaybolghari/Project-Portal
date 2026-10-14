@@ -1,6 +1,7 @@
 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SecureCadPortal.Application.Projects;
 using SecureCadPortal.Domain.Entities;
 using SecureCadPortal.Infrastructure.Data;
 
@@ -30,16 +31,22 @@ public class ProjectsController : ControllerBase
 
     [HttpPost]
     public async Task<ActionResult<Project>> CreateProject(
-        [FromBody] Project project)
+        [FromBody] CreateProjectRequest request)
     {
-        project.Id = 0;
-        project.CreatedAtUtc = DateTime.UtcNow;
+        var project = new Project
+        {
+            Name = request.Name.Trim(),
+            Description = request.Description.Trim(),
+            Status = request.Status,
+            CreatedAtUtc = DateTime.UtcNow
+        };
 
         _dbContext.Projects.Add(project);
         await _dbContext.SaveChangesAsync();
 
-        return StatusCode(
-            StatusCodes.Status201Created,
+        return CreatedAtAction(
+            nameof(GetProjects),
+            new { id = project.Id },
             project);
     }
 }
