@@ -15,6 +15,8 @@ var connectionString =
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(connectionString));
     
+builder.Services.AddControllers();
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
@@ -43,6 +45,8 @@ app.MapGet("/weatherforecast", () =>
     return forecast;
 })
 .WithName("GetWeatherForecast");
+
+app.MapControllers();
 
 app.Run();
 
