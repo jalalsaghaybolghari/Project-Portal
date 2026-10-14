@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SecureCadPortal.Api/SecureCadPortal.Api.csproj" />
+    <Project Path="src/SecureCadPortal.Application/SecureCadPortal.Application.csproj" />
+    <Project Path="src/SecureCadPortal.Domain/SecureCadPortal.Domain.csproj" />
+    <Project Path="src/SecureCadPortal.Infrastructure/SecureCadPortal.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SecureCadPortal.IntegrationTests/SecureCadPortal.IntegrationTests.csproj" />
+    <Project Path="tests/SecureCadPortal.UnitTests/SecureCadPortal.UnitTests.csproj" />
+  </Folder>
+</Solution>
