@@ -108,6 +108,7 @@ appsettings.*.local.json
 *.sqlite3
 *.mdf
 *.ldf
+*.sql
 
 # ==========================================
 # macOS
