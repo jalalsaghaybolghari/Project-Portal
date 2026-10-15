@@ -9,4 +9,10 @@ public interface IProjectService
     Task<Project?> GetByIdAsync(int id);
 
     Task<Project> CreateAsync(CreateProjectRequest request);
+
+    Task<bool> UpdateAsync(
+    int id,
+    UpdateProjectRequest request);
+
+    Task<bool> DeleteAsync(int id);
 }

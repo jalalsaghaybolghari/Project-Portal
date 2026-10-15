@@ -37,4 +37,27 @@ public class ProjectService : IProjectService
 
         return project;
     }
+
+    public async Task<bool> UpdateAsync(
+    int id,
+    UpdateProjectRequest request)
+    {
+        var project = await _repository.GetByIdAsync(id);
+
+        if (project is null)
+        {
+            return false;
+        }
+
+        project.Name = request.Name.Trim();
+        project.Description = request.Description.Trim();
+        project.Status = request.Status;
+
+        return await _repository.UpdateAsync(project);
+    }
+
+    public Task<bool> DeleteAsync(int id)
+    {
+        return _repository.DeleteAsync(id);
+    }
 }

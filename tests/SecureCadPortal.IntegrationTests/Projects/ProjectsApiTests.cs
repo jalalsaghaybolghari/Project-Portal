@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using SecureCadPortal.Infrastructure.Data;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using SecureCadPortal.Domain.Entities;
 namespace SecureCadPortal.IntegrationTests.Projects;
 
 public class ProjectsApiTests
@@ -46,6 +47,20 @@ public class ProjectsApiTests
     }
 
     [Fact]
+    public async Task GetProjectById_WhenProjectDoesNotExist_ReturnsNotFound()
+    {
+        // Arrange
+        await using var factory = new ProjectsApiFactory();
+        using var client = factory.CreateClient();
+
+        // Act
+        var response = await client.GetAsync("/api/projects/999999");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
     public async Task PostProject_WithShortName_ReturnsBadRequest()
     {
         await using var factory = new ProjectsApiFactory();
@@ -63,6 +78,57 @@ public class ProjectsApiTests
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
+
+    [Fact]
+    public async Task DeleteProject_WhenProjectExists_ReturnsNoContent()
+    {
+        // Arrange
+        await using var factory = new ProjectsApiFactory();
+        using var client = factory.CreateClient();
+
+        var createResponse = await client.PostAsJsonAsync(
+            "/api/projects",
+            new
+            {
+                name = "Project to Delete",
+                description = "Integration test project",
+                status = "Active"
+            });
+
+        Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
+
+        var createdProject = await createResponse.Content
+            .ReadFromJsonAsync<Project>();
+
+        Assert.NotNull(createdProject);
+
+        // Act
+        var deleteResponse = await client.DeleteAsync(
+            $"/api/projects/{createdProject.Id}");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
+
+        var getResponse = await client.GetAsync(
+            $"/api/projects/{createdProject.Id}");
+
+        Assert.Equal(HttpStatusCode.NotFound, getResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteProject_WhenProjectDoesNotExist_ReturnsNotFound()
+    {
+        // Arrange
+        await using var factory = new ProjectsApiFactory();
+        using var client = factory.CreateClient();
+
+        // Act
+        var response = await client.DeleteAsync("/api/projects/999999");
+
+        // Assert
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
 
     private sealed class ProjectsApiFactory
         : WebApplicationFactory<Program>

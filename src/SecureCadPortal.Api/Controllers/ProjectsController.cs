@@ -48,4 +48,31 @@ public class ProjectsController : ControllerBase
             new { id = project.Id },
             project);
     }
+
+    [HttpPut("{id:int}")]
+    public async Task<IActionResult> UpdateProject(
+        int id,
+        [FromBody] UpdateProjectRequest request)
+    {
+        var project = await _projectService.UpdateAsync(id, request);
+
+        if (!project)
+        {
+            return NotFound();
+        }
+        return NoContent();
+    }
+
+    [HttpDelete("{id:int}")]
+    public async Task<IActionResult> DeleteProject(int id)
+    {
+        var deleted = await _projectService.DeleteAsync(id);
+
+        if (!deleted)
+        {
+            return NotFound();
+        }
+
+        return NoContent();
+    }
 }
