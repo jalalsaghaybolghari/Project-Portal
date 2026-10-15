@@ -28,15 +28,7 @@ public class ProjectsApiTests
         var postResponse = await client.PostAsJsonAsync(
             "/api/projects", request);
 
-        var responseBody = await postResponse.Content.ReadAsStringAsync();
-
-        Console.WriteLine($"POST status: {(int)postResponse.StatusCode}");
-        Console.WriteLine($"POST response: {responseBody}");
-
-        Assert.True(
-            postResponse.StatusCode == HttpStatusCode.Created,
-            $"Expected 201 Created, got {(int)postResponse.StatusCode} " +
-            $"{postResponse.StatusCode}. Response: {responseBody}");
+        Assert.Equal(HttpStatusCode.Created, postResponse.StatusCode);
 
         var projects = await client.GetFromJsonAsync<List<ProjectResponse>>(
             "/api/projects");

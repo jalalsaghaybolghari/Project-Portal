@@ -1,9 +1,7 @@
 
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using SecureCadPortal.Application.Projects;
 using SecureCadPortal.Domain.Entities;
-using SecureCadPortal.Infrastructure.Data;
 
 namespace SecureCadPortal.Api.Controllers;
 
@@ -11,20 +9,17 @@ namespace SecureCadPortal.Api.Controllers;
 [Route("api/[controller]")]
 public class ProjectsController : ControllerBase
 {
-    private readonly AppDbContext _dbContext;
+    private readonly IProjectService _projectService;
 
-    public ProjectsController(AppDbContext dbContext)
+    public ProjectsController(IProjectService projectService)
     {
-        _dbContext = dbContext;
+        _projectService = projectService;
     }
 
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Project>>> GetProjects()
     {
-        var projects = await _dbContext.Projects
-            .AsNoTracking()
-            .OrderBy(p => p.Name)
-            .ToListAsync();
+        var projects = await _projectService.GetAllAsync();
 
         return Ok(projects);
     }
@@ -32,9 +27,7 @@ public class ProjectsController : ControllerBase
     [HttpGet("{id:int}")]
     public async Task<ActionResult<Project>> GetProjectById(int id)
     {
-        var project = await _dbContext.Projects
-            .AsNoTracking()
-            .FirstOrDefaultAsync(p => p.Id == id);
+        var project = await _projectService.GetByIdAsync(id);
 
         if (project is null)
         {
@@ -48,16 +41,7 @@ public class ProjectsController : ControllerBase
     public async Task<ActionResult<Project>> CreateProject(
         [FromBody] CreateProjectRequest request)
     {
-        var project = new Project
-        {
-            Name = request.Name.Trim(),
-            Description = request.Description.Trim(),
-            Status = request.Status,
-            CreatedAtUtc = DateTime.UtcNow
-        };
-
-        _dbContext.Projects.Add(project);
-        await _dbContext.SaveChangesAsync();
+        var project = await _projectService.CreateAsync(request);
 
         return CreatedAtAction(
             nameof(GetProjectById),
