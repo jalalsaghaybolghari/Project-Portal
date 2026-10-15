@@ -29,6 +29,21 @@ public class ProjectsController : ControllerBase
         return Ok(projects);
     }
 
+    [HttpGet("{id:int}")]
+    public async Task<ActionResult<Project>> GetProjectById(int id)
+    {
+        var project = await _dbContext.Projects
+            .AsNoTracking()
+            .FirstOrDefaultAsync(p => p.Id == id);
+
+        if (project is null)
+        {
+            return NotFound();
+        }
+
+        return Ok(project);
+    }
+
     [HttpPost]
     public async Task<ActionResult<Project>> CreateProject(
         [FromBody] CreateProjectRequest request)
@@ -45,7 +60,7 @@ public class ProjectsController : ControllerBase
         await _dbContext.SaveChangesAsync();
 
         return CreatedAtAction(
-            nameof(GetProjects),
+            nameof(GetProjectById),
             new { id = project.Id },
             project);
     }

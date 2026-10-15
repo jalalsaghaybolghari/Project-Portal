@@ -4,8 +4,7 @@
 **Workspace folder:** `Secure-CAD-Project-Portal`\
 **Stack:** .NET 10, ASP.NET Core Web API, EF Core, Azure SQL, Git, VS
 Code\
-**Status:** Solution builds; EF Core migration applied to Azure SQL. The
-Projects API endpoints still need to be added/tested.
+**Status:** Solution structure, Azure SQL persistence, Projects API endpoints, DTO validation, unit tests, and integration-test setup have been implemented. The migration was applied successfully. Re-run `dotnet build` and `dotnet test` to verify the current working tree before committing.
 
 > This file documents the setup commands and work completed so far.
 > Commands marked as checks are safe to rerun; setup commands generally
@@ -390,49 +389,65 @@ Expected: both `Products` and `Projects`.
 
 ------------------------------------------------------------------------
 
-## 8. Current status and next steps
+## 8. Projects API and request validation
 
-### Completed
+### `CreateProjectRequest`
 
--   .NET solution and six projects created.
--   Project references configured.
--   Build succeeded.
--   `.gitignore` added.
--   Azure SQL server and database created.
--   EF Core provider/design package configured.
--   Local User Secrets connection string configured.
--   `AppDbContext` registered.
--   `InitialProjects` migration generated and successfully applied (as
-    confirmed by the user).
+File: `src/SecureCadPortal.Application/Projects/CreateProjectRequest.cs`
 
-### Still to do
+```csharp
+using System.ComponentModel.DataAnnotations;
 
-1.  Confirm that `Project.cs` and `AppDbContext.cs` exist and match the
-    code above.
-2.  Confirm the `Projects` table exists in Azure SQL.
-3.  Create `src/SecureCadPortal.Api/Controllers/ProjectsController.cs`.
-4.  Add `builder.Services.AddControllers();` before `builder.Build()`
-    and `app.MapControllers();` after it in `Program.cs`, preserving
-    other setup.
-5.  Build and run the API.
-6.  Test `GET /api/projects` and `POST /api/projects`.
-7.  Replace direct entity binding with DTOs and validation.
-8.  Add meaningful unit and integration tests.
-9.  Implement authentication and resource-level authorization.
-10. Build the Angular frontend and add CI/CD.
+namespace SecureCadPortal.Application.Projects;
 
-### Future API tests
+public class CreateProjectRequest
+{
+    [Required]
+    [StringLength(100, MinimumLength = 3)]
+    public string Name { get; set; } = string.Empty;
 
-Once the controller is implemented and the API is running, use the
-actual port printed by `dotnet run`.
+    [StringLength(1000)]
+    public string Description { get; set; } = string.Empty;
 
-``` bash
+    [Required]
+    [RegularExpression("^(Active|Archived)$")]
+    public string Status { get; set; } = "Active";
+}
+```
+
+The request DTO keeps API input separate from the database entity. Data annotations express basic validation rules: name is required and 3–100 characters, description is at most 1,000 characters, and status must be `Active` or `Archived`.
+
+### `ProjectsController`
+
+File: `src/SecureCadPortal.Api/Controllers/ProjectsController.cs`
+
+The controller uses constructor injection for `AppDbContext` and implements:
+
+- `GET /api/projects` — retrieve projects.
+- `GET /api/projects/{id:int}` — retrieve one project by ID.
+- `POST /api/projects` — validate input, create a project, save it, and return `201 Created` with a location for the new resource.
+
+The POST action maps the request DTO to a `Project` entity, trims text fields, sets `CreatedAtUtc` using `DateTime.UtcNow`, calls `SaveChangesAsync()`, and returns `CreatedAtAction(...)`.
+
+`Program.cs` includes `builder.Services.AddControllers()` and `app.MapControllers()`. It also includes `public partial class Program { }` so the integration-test project can create a `WebApplicationFactory<Program>` test host.
+
+### Try the endpoints
+
+Start the API in one terminal:
+
+```bash
+dotnet run --project src/SecureCadPortal.Api
+```
+
+Use the actual local URL printed by the app (the API previously listened on `http://localhost:5190`; the port may differ).
+
+```bash
 curl -i http://localhost:5190/api/projects
 ```
 
-Create a test project:
+Create a project:
 
-``` bash
+```bash
 curl -i -X POST http://localhost:5190/api/projects \
   -H "Content-Type: application/json" \
   -d '{
@@ -442,9 +457,152 @@ curl -i -X POST http://localhost:5190/api/projects \
   }'
 ```
 
-Then run GET again and verify the row in Azure SQL.
+Then run the GET request again. A successful POST should return `201 Created`. If the local port differs, replace `5190` with the port printed by `dotnet run`.
 
-> The controller and endpoint commands above are the next planned steps,
-> not confirmed as completed yet. The project should not be considered
-> production-secure until authentication, authorization, validation, and
-> tests are implemented.
+------------------------------------------------------------------------
+
+## 9. Dependency Injection and AppDbContext
+
+### Dependency Injection (DI)
+
+DI means a class receives the services it needs rather than creating those services itself. In this project, `ProjectsController` declares its dependency in the constructor:
+
+```csharp
+private readonly AppDbContext _context;
+
+public ProjectsController(AppDbContext context)
+{
+    _context = context;
+}
+```
+
+ASP.NET Core resolves `AppDbContext` from its dependency-injection container. This reduces coupling and makes the controller easier to test.
+
+### Registering the database context
+
+The API registers the EF Core context using the SQL Server provider and the local User Secrets connection string. The standard configuration pattern is:
+
+```csharp
+var connectionString =
+    builder.Configuration.GetConnectionString("DefaultConnection");
+
+if (!string.IsNullOrWhiteSpace(connectionString))
+{
+    builder.Services.AddDbContext<AppDbContext>(options =>
+        options.UseSqlServer(connectionString));
+}
+```
+
+**Configuration note:** this conditional registration was introduced so the test host could start without requiring the Azure SQL secret. For a production-ready setup, prefer making the behavior explicit by environment: skip SQL Server registration only in `Testing`, and require a valid connection string in Development/Production. The integration-test factory should replace the SQL Server context registration with its test provider.
+
+`AddDbContext` uses the `Scoped` lifetime by default, normally giving each HTTP request its own context. `DbContext` is not thread-safe and should not be shared across concurrent operations.
+
+### What AppDbContext does
+
+`AppDbContext` inherits from EF Core's `DbContext` and exposes `DbSet<Project> Projects`. EF Core translates LINQ queries such as `await _context.Projects.ToListAsync()` into database queries. Calling `_context.Projects.Add(project)` marks an entity for insertion; `await _context.SaveChangesAsync()` persists pending changes.
+
+------------------------------------------------------------------------
+
+## 10. Unit and integration tests
+
+### Unit tests
+
+File: `tests/SecureCadPortal.UnitTests/Projects/CreateProjectRequestTests.cs`
+
+Four validation scenarios were added for the request DTO: valid input, too-short name, invalid status, and description longer than 1,000 characters. The tests use `Validator.TryValidateObject` to exercise the Data Annotations rules.
+
+### Integration tests
+
+File: `tests/SecureCadPortal.IntegrationTests/Projects/ProjectsApiTests.cs`
+
+The integration-test project uses `Microsoft.AspNetCore.Mvc.Testing` and `Microsoft.EntityFrameworkCore.InMemory`. A `ProjectsApiFactory : WebApplicationFactory<Program>` configures a test host and replaces the normal EF Core database registration with an InMemory provider named `ProjectsApiTests`.
+
+Scenarios added:
+
+- `PostProject_ThenGetProjects_ReturnsSavedProject` — POST a project and verify it appears in the collection GET response.
+- `PostProject_WithShortName_ReturnsBadRequest` — verify invalid input is rejected.
+
+Troubleshooting recorded during implementation:
+
+1. The test host initially failed because `DefaultConnection` was missing. The application startup configuration was adjusted to allow the test host to start without the Azure SQL secret; make the environment-specific configuration stricter before production use.
+2. The test host initially registered both SQL Server and InMemory EF Core providers. The factory now removes the existing `AppDbContext`, `DbContextOptions<AppDbContext>`, and `IDbContextOptionsConfiguration<AppDbContext>` registrations before adding InMemory.
+3. The POST returned `201 Created`, but the following GET did not see the new project when each test factory used a different database name. Using the stable database name `ProjectsApiTests` resolved that issue for the current factory/test setup.
+4. A warning about not determining the HTTPS port for redirect may appear in tests. It is separate from the endpoint assertions; configure or disable HTTPS redirection for the Testing environment if desired.
+
+Run all tests from the repository root:
+
+```bash
+dotnet build
+dotnet test
+```
+
+Run only unit tests:
+
+```bash
+dotnet test tests/SecureCadPortal.UnitTests/SecureCadPortal.UnitTests.csproj
+```
+
+Run only integration tests:
+
+```bash
+dotnet test tests/SecureCadPortal.IntegrationTests/SecureCadPortal.IntegrationTests.csproj
+```
+
+The most recent conversation checkpoint reported that the integration-test fix was working, but a fresh full `dotnet test` run is still recommended to confirm the current state.
+
+------------------------------------------------------------------------
+
+## 11. Git review and checkpoint
+
+Before committing, inspect the staged and unstaged changes and verify that no secrets are included:
+
+```bash
+git status --short
+git diff --stat
+git diff --cached --stat
+git diff --cached
+```
+
+Do not print or paste the actual connection-string secret. Confirm that `appsettings.json` and other tracked files contain no passwords or access tokens. User Secrets should remain local and outside Git.
+
+Suggested commit message for the API and tests, if these changes are not committed yet:
+
+```bash
+git add .
+git commit -m "Add Projects API and integration tests"
+```
+
+Do not assume that this commit has been created; check `git log -1 --oneline` first. Do not push unless you intend to publish the changes to `origin/main`.
+
+------------------------------------------------------------------------
+
+## 12. Current status and next steps
+
+### Implemented so far
+
+- .NET 10 solution and six projects created.
+- Project references configured for Domain, Application, Infrastructure, API, UnitTests, and IntegrationTests.
+- `.gitignore` added and generated build artifacts removed from the Git index.
+- Azure SQL server/database created; local connection string configured with User Secrets.
+- `Project` domain entity and `AppDbContext` added.
+- `InitialProjects` EF Core migration generated and successfully applied to Azure SQL.
+- Existing `Products` table is intended to be preserved; migration should only add `Projects`.
+- `CreateProjectRequest` DTO and Data Annotations validation added.
+- Projects API GET collection, GET by ID, and POST endpoints added.
+- Four DTO validation unit-test scenarios and two API integration-test scenarios added.
+- Integration tests configured to use EF Core InMemory instead of Azure SQL.
+
+### Recommended next steps
+
+1. Run `dotnet build` and `dotnet test` and resolve any failures.
+2. Remove temporary `Console.WriteLine` diagnostics from integration tests if they are still present; keep useful assertion messages where appropriate.
+3. Refine `Program.cs` so a missing connection string is tolerated only in the `Testing` environment and is a clear startup error in Development/Production.
+4. Review `git status`, staged diffs, and `.gitignore`; confirm no secrets are tracked.
+5. Commit the verified API/test changes if they are not already committed.
+6. Refactor business logic from the controller into an Application service/use-case layer, keeping the controller thin.
+7. Add stronger integration tests against SQL Server where database-specific behavior matters; EF Core InMemory is not a full SQL Server substitute.
+8. Add authentication and authorization before exposing the API beyond local development.
+9. Add logging, centralized error handling, and API documentation as appropriate.
+10. Build the Angular frontend and later configure CI/CD.
+
+> This changelog records the state described in the development conversation. It does not claim that a fresh build/test run, a Git commit, authentication, or production hardening has been completed unless explicitly verified.
