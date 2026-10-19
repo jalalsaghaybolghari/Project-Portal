@@ -174,6 +174,33 @@ public class ProjectsApiTests
             secondResponse.StatusCode);
     }
 
+    [Fact]
+    public async Task GetProjects_ReturnsSecurityHeaders()
+    {
+        await using var factory = new ProjectsApiFactory();
+        using var client = CreateAuthenticatedClient(factory);
+
+        var response = await client.GetAsync(ProjectsEndpoint);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        Assert.Equal(
+            "nosniff",
+            response.Headers.GetValues(
+                "X-Content-Type-Options").Single());
+
+        Assert.Equal(
+            "DENY",
+            response.Headers.GetValues(
+                "X-Frame-Options").Single());
+
+        Assert.Equal(
+            "strict-origin-when-cross-origin",
+            response.Headers.GetValues(
+                "Referrer-Policy").Single());
+    }
+
+
     private static HttpClient CreateAuthenticatedClient(
         ProjectsApiFactory factory)
     {

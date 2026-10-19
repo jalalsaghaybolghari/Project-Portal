@@ -5,6 +5,7 @@ using SecureCadPortal.Infrastructure.Projects;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Identity.Web;
 using System.Threading.RateLimiting;
+using SecureCadPortal.Api.Middleware;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -98,7 +99,7 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 app.UseRouting();
-// Configure the HTTP request pipeline.
+app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseHttpLogging();
 app.UseExceptionHandler();
 

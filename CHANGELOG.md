@@ -606,3 +606,77 @@ Do not assume that this commit has been created; check `git log -1 --oneline` fi
 10. Build the Angular frontend and later configure CI/CD.
 
 > This changelog records the state described in the development conversation. It does not claim that a fresh build/test run, a Git commit, authentication, or production hardening has been completed unless explicitly verified.
+
+---
+
+## 2026-10-19 — Security hardening, Docker validation, and Azure deployment
+
+### Security and API configuration
+
+- Added `SecurityHeadersMiddleware` with `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, and a restrictive `Permissions-Policy`.
+- Registered the security-header middleware after routing and before HTTP logging.
+- Added integration coverage for security headers and API rate limiting.
+- Configured API rate limiting with a default limit of 30 requests per 60-second window. A test with a limit of one request verifies that the next request returns HTTP `429 Too Many Requests`.
+- Production Entra ID authentication and the `access_as_user` scope requirement remain enabled for the Projects API. The Testing environment uses a test authentication handler and an InMemory database.
+- The last explicitly recorded full integration-test run passed 19 tests; a later run after the security-header test was also reported successful, but its exact test count was not captured.
+
+### Docker container
+
+- Added a root `Dockerfile` using the .NET 10 SDK image to build/publish the API and the .NET 10 ASP.NET runtime image to run it.
+- The container listens on port `8080` (`ASPNETCORE_HTTP_PORTS=8080`) and runs as the non-root `$APP_UID` user.
+- Added a root `.dockerignore` excluding build output, Git metadata, local development settings, secrets files, environment files, user-specific IDE files, and test results.
+- The Docker image builds successfully when `dotnet publish` performs restore rather than using `--no-restore` without a restored package cache.
+- Verified the local container starts in `Production` and listens on port `8080`.
+- Verified unauthenticated `/api/projects` returns `401 Unauthorized` with security headers, while a valid Entra ID token returns `200 OK` and project data from Azure SQL.
+- Swagger returns `404` in Production because it is not enabled in that environment; this is not currently treated as a deployment blocker.
+- The initial image built on Apple Silicon did not contain a `linux/amd64` platform, so Azure Container Apps rejected it. Rebuild and push the image with `docker buildx build --platform linux/amd64 ... --push` before retrying the revision.
+
+### Azure SQL and Managed Identity
+
+- Existing database: `free-sql-db-5954153` on `sqltester1992free.database.windows.net`, region `germanywestcentral`.
+- The database was observed paused due to serverless behavior and later reported `Online` again. Its SKU is `GP_S_Gen5`, with `autoPauseDelay` of 60 minutes.
+- Local Docker access to SQL initially failed because the local client IP was not allowed by the SQL firewall. After adding the current client IP, an authenticated API request returned `200 OK`. That local firewall rule does not grant access to Azure Container Apps; configure cloud networking/firewall access separately and do not open access to all IPs.
+- Configured `J Sagaie` as the Microsoft Entra administrator for the SQL logical server using Object ID `00b06eb6-7547-4233-9e82-b04ed9772da7`.
+- Created database user `[securecadportal-identity]` from external provider and granted `SELECT`, `INSERT`, `UPDATE`, and `DELETE` on `dbo.Projects`. The commands completed without reported errors; a separate permission-query verification was not captured.
+- The user-assigned managed identity is `securecadportal-identity` with Client ID `05b48359-f03a-4ecb-949b-41e7bb63af6f` and Principal ID `1d359adc-f4e7-47ef-ad0b-d94b7cc77c85`.
+- The SQL connection for the deployed API has not yet been configured to use Managed Identity, and cloud-to-SQL connectivity remains unverified.
+
+### Azure resources created
+
+- Registered `Microsoft.App` and `Microsoft.ContainerRegistry`; both were subsequently confirmed as `Registered`.
+- Created application Resource Group `securecadportal-rg` in `austriaeast`.
+- Created Azure Container Registry `securecadportal741b5e58` in `austriaeast`, Basic SKU, with the admin account disabled.
+- Pushed image tag `securecadportal-api:v1` to `securecadportal741b5e58.azurecr.io`.
+- Created Container Apps environment `securecadportal-env` in `austriaeast`, with Log Analytics as the log destination.
+- Created user-assigned identity `securecadportal-identity` and assigned the `AcrPull` role scoped to the registry.
+- Created a Container App resource named `securecadportal-api`, but its first revision failed provisioning because the image did not contain `linux/amd64`. The app's `provisioningState` was reported as `Failed` at the last check.
+- A retry using the corrected `linux/amd64` image has not yet been confirmed. Do not mark the cloud API deployment as successful until a healthy revision and public endpoint have been verified.
+
+### Known deployment considerations
+
+- Azure Container Apps ingress should provide external HTTPS and route to container port `8080`. Configure forwarded headers and HSTS carefully; avoid HTTPS redirect loops behind TLS termination.
+- Container logs previously showed ASP.NET Core Data Protection keys stored in container-local storage without an XML encryptor. Review persistent/encrypted key storage if the application uses cookies, antiforgery, or other Data Protection features.
+- The app and SQL database are in different regions (`austriaeast` and `germanywestcentral`); verify networking and latency.
+- ACR Basic and Log Analytics can incur charges. Review Azure Cost Management and remove resources that are no longer needed.
+
+### Current verified status
+
+- Local Docker container and API authentication were verified successfully.
+- Azure SQL is reachable from the local setup when the firewall permits the client IP; the database was most recently observed as `Online`.
+- Azure resource group, ACR, Container Apps environment, and user-assigned identity have been created.
+- ACR contains `securecadportal-api:v1`, but the first Container Apps revision failed because the image lacked `linux/amd64`.
+- Cloud deployment is **in progress, not yet successful**. Public HTTPS API access, cloud-to-SQL connectivity, Managed Identity SQL authentication from the app, and CI/CD are still pending verification.
+
+### Next steps
+
+1. Rebuild and push the image for `linux/amd64`:
+   `docker buildx build --platform linux/amd64 --tag securecadportal741b5e58.azurecr.io/securecadportal-api:v1 --push .`
+2. Verify the image manifest includes `linux/amd64`, then update `securecadportal-api` and inspect its revisions/provisioning state.
+3. Configure the API's SQL connection to use the user-assigned Managed Identity and ensure the app identity has the required SQL permissions.
+4. Configure and verify secure Container Apps-to-Azure SQL network access without opening the SQL firewall to all IPs.
+5. Verify the public HTTPS endpoint: unauthenticated request returns `401`, authenticated request returns `200`, and security headers/rate limiting behave as expected.
+6. Review forwarded headers/HSTS and Data Protection key storage for the hosted environment.
+7. Add GitHub Actions CI/CD after manual deployment is stable.
+8. Re-run the full test suite and review outstanding dependency/security warnings before considering the project production-ready.
+
+> Status note: This changelog reflects the verified conversation state up to 2026-10-19. Do not mark the Azure deployment complete until a healthy Container Apps revision and the public API endpoint have been tested.
