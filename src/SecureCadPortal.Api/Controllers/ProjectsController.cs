@@ -2,11 +2,17 @@
 using Microsoft.AspNetCore.Mvc;
 using SecureCadPortal.Application.Projects;
 using SecureCadPortal.Domain.Entities;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.Identity.Web.Resource;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace SecureCadPortal.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
+[RequiredScope("access_as_user")]
+[EnableRateLimiting("api")]
 public class ProjectsController : ControllerBase
 {
     private readonly IProjectService _projectService;

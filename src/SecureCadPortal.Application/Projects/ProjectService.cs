@@ -1,14 +1,16 @@
 using SecureCadPortal.Domain.Entities;
-
+using Microsoft.Extensions.Logging;
 namespace SecureCadPortal.Application.Projects;
 
 public class ProjectService : IProjectService
 {
     private readonly IProjectRepository _repository;
+    private readonly ILogger<ProjectService> _logger;
 
-    public ProjectService(IProjectRepository repository)
+    public ProjectService(IProjectRepository repository, ILogger<ProjectService> logger)
     {
         _repository = repository;
+        _logger = logger;
     }
 
     public Task<List<Project>> GetAllAsync()
@@ -35,6 +37,8 @@ public class ProjectService : IProjectService
         await _repository.AddAsync(project);
         await _repository.SaveChangesAsync();
 
+        _logger.LogInformation("Project {ProjectId} created successfully",project.Id);
+
         return project;
     }
 
@@ -53,11 +57,15 @@ public class ProjectService : IProjectService
         project.Description = request.Description.Trim();
         project.Status = request.Status;
 
-        return await _repository.UpdateAsync(project);
+        var isUpdated = await _repository.UpdateAsync(project);
+        _logger.LogInformation("Project {ProjectId} updated successfully",project.Id);
+        return isUpdated;
     }
 
     public Task<bool> DeleteAsync(int id)
     {
-        return _repository.DeleteAsync(id);
+        var isDeleted = _repository.DeleteAsync(id);
+        _logger.LogInformation("Project {ProjectId} deleted successfully",id);
+        return isDeleted;
     }
 }

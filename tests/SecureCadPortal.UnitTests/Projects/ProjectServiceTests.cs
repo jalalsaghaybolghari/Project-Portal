@@ -1,6 +1,7 @@
 
 using SecureCadPortal.Application.Projects;
 using SecureCadPortal.Domain.Entities;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace SecureCadPortal.UnitTests.Projects;
@@ -12,8 +13,9 @@ public class ProjectServiceTests
     {
         // Arrange
         var repository = new FakeProjectRepository();
-        var service = new ProjectService(repository);
-
+        var service = new ProjectService(
+            repository,
+            NullLogger<ProjectService>.Instance);
         var request = new CreateProjectRequest
         {
             Name = "  CAD Portal  ",
