@@ -12,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using SecureCadPortal.Domain.Entities;
 using SecureCadPortal.Infrastructure.Data;
 using SecureCadPortal.IntegrationTests.Authentication;
+using Microsoft.Extensions.Configuration;
 
 namespace SecureCadPortal.IntegrationTests.Projects;
 
@@ -156,6 +157,23 @@ public class ProjectsApiTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
+    [Fact]
+    public async Task GetProjects_WhenRateLimitExceeded_ReturnsTooManyRequests()
+    {
+        await using var factory = new ProjectsApiFactory(
+            permitLimit: 1);
+
+        using var client = CreateAuthenticatedClient(factory);
+
+        var firstResponse = await client.GetAsync(ProjectsEndpoint);
+        var secondResponse = await client.GetAsync(ProjectsEndpoint);
+
+        Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
+        Assert.Equal(
+            HttpStatusCode.TooManyRequests,
+            secondResponse.StatusCode);
+    }
+
     private static HttpClient CreateAuthenticatedClient(
         ProjectsApiFactory factory)
     {
@@ -171,12 +189,39 @@ public class ProjectsApiTests
     private sealed class ProjectsApiFactory
         : WebApplicationFactory<Program>
     {
+        private readonly int _permitLimit;
+
+        public ProjectsApiFactory(int permitLimit = 30)
+        {
+            _permitLimit = permitLimit;
+        }
+
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment("Testing");
 
+            Console.WriteLine(
+                $"Test factory PermitLimit: {_permitLimit}");
+
+            // builder.ConfigureAppConfiguration((_, config) =>
+            // {
+            //     config.Sources.Clear();
+
+            //     config.AddInMemoryCollection(
+            //         new Dictionary<string, string?>
+            //         {
+            //             ["RateLimiting:PermitLimit"] =
+            //                 _permitLimit.ToString(),
+            //             ["RateLimiting:WindowSeconds"] = "60"
+            //         });
+            // });
+            
+            
             var databaseName = $"ProjectsApiTests_{Guid.NewGuid():N}";
 
+Environment.SetEnvironmentVariable(
+    "TEST_RATE_LIMIT",
+    _permitLimit.ToString());
             builder.ConfigureTestServices(services =>
             {
                 services.RemoveAll<AppDbContext>();
@@ -204,7 +249,6 @@ public class ProjectsApiTests
             });
         }
     }
-
     private sealed record ProjectResponse(
         int Id,
         string Name,

@@ -58,6 +58,25 @@ builder.Services.AddHttpLogging(options =>
 
 builder.Services.AddProblemDetails();
 
+var permitLimit =
+    builder.Environment.IsEnvironment("Testing")
+        ? int.TryParse(
+            Environment.GetEnvironmentVariable(
+                "TEST_RATE_LIMIT"),
+            out var testLimit)
+            ? testLimit
+            : 30
+        : builder.Configuration.GetValue<int?>(
+            "RateLimiting:PermitLimit") ?? 30;
+
+var windowSeconds =
+    builder.Configuration.GetValue<int?>(
+        "RateLimiting:WindowSeconds") ?? 60;
+
+Console.WriteLine(
+    $"Rate limit configuration: PermitLimit={permitLimit}, " +
+    $"WindowSeconds={windowSeconds}");
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode =
@@ -70,15 +89,15 @@ builder.Services.AddRateLimiter(options =>
                 ?? "unknown",
             factory: _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = 30,
-                Window = TimeSpan.FromMinutes(1),
+                PermitLimit = permitLimit,
+                Window = TimeSpan.FromSeconds(windowSeconds),
                 QueueLimit = 0,
                 AutoReplenishment = true
             }));
 });
 
 var app = builder.Build();
-
+app.UseRouting();
 // Configure the HTTP request pipeline.
 app.UseHttpLogging();
 app.UseExceptionHandler();
