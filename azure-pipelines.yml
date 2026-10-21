@@ -40,7 +40,7 @@ steps:
       --collect:"XPlat Code Coverage"
       --logger "trx;LogFileName=test-results.trx"
       --results-directory "$(Agent.TempDirectory)/TestResults"
-    displayName: 'Run tests and collect coverage'
+    displayName: 'Run all tests and collect coverage'
 
   - task: PublishTestResults@2
     displayName: 'Publish test results'
