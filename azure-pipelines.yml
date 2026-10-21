@@ -54,6 +54,45 @@ steps:
     displayName: 'Run integration tests and collect coverage'
 
 
+  - script: |
+      dotnet tool install --tool-path "$(Agent.TempDirectory)/tools" dotnet-reportgenerator-globaltool
+
+      "$(Agent.TempDirectory)/tools/reportgenerator" \
+        "-reports:$(Agent.TempDirectory)/TestResults/**/coverage.cobertura.xml" \
+        "-targetdir:$(Agent.TempDirectory)/CoverageReport" \
+        "-reporttypes:TextSummary;Cobertura"
+
+      python3 - <<'PY'
+      import re
+      import sys
+      from pathlib import Path
+
+      summary = Path("$(Agent.TempDirectory)/CoverageReport/Summary.txt")
+      if not summary.exists():
+          print("##vso[task.logissue type=error]Coverage summary was not generated.")
+          sys.exit(1)
+
+      text = summary.read_text()
+      match = re.search(r"Line coverage:\s*([\d.]+)%", text)
+
+      if not match:
+          print("##vso[task.logissue type=error]Could not read line coverage.")
+          print(text)
+          sys.exit(1)
+
+      coverage = float(match.group(1))
+      threshold = 50.0
+      print(f"Line coverage: {coverage:.1f}% (minimum: {threshold:.1f}%)")
+
+      if coverage < threshold:
+          print("##vso[task.logissue type=error]Code coverage is below the required threshold.")
+          sys.exit(1)
+
+      print("Coverage quality gate passed.")
+      PY
+    displayName: 'Enforce 50% line coverage'
+
+
   - task: PublishTestResults@2
     displayName: 'Publish test results'
     condition: succeededOrFailed()
@@ -69,6 +108,6 @@ steps:
     displayName: 'Publish code coverage'
     condition: succeededOrFailed()
     inputs:
-      summaryFileLocation: '$(Agent.TempDirectory)/TestResults/**/coverage.cobertura.xml'
+      summaryFileLocation: '$(Agent.TempDirectory)/CoverageReport/Cobertura.xml'
       pathToSources: '$(Build.SourcesDirectory)'
       failIfCoverageEmpty: true
