@@ -32,15 +32,27 @@ steps:
   - script: dotnet build SecureCadPortal.slnx --configuration $(buildConfiguration) --no-restore
     displayName: 'Build solution'
 
+
   - script: >
-      dotnet test SecureCadPortal.slnx
+      dotnet test tests/SecureCadPortal.UnitTests/SecureCadPortal.UnitTests.csproj
       --configuration $(buildConfiguration)
       --no-build
       --settings coverage.runsettings
       --collect:"XPlat Code Coverage"
-      --logger "trx;LogFileName=test-results.trx"
-      --results-directory "$(Agent.TempDirectory)/TestResults"
-    displayName: 'Run all tests and collect coverage'
+      --logger "trx;LogFileName=unit-tests.trx"
+      --results-directory "$(Agent.TempDirectory)/TestResults/UnitTests"
+    displayName: 'Run unit tests and collect coverage'
+
+  - script: >
+      dotnet test tests/SecureCadPortal.IntegrationTests/SecureCadPortal.IntegrationTests.csproj
+      --configuration $(buildConfiguration)
+      --no-build
+      --settings coverage.runsettings
+      --collect:"XPlat Code Coverage"
+      --logger "trx;LogFileName=integration-tests.trx"
+      --results-directory "$(Agent.TempDirectory)/TestResults/IntegrationTests"
+    displayName: 'Run integration tests and collect coverage'
+
 
   - task: PublishTestResults@2
     displayName: 'Publish test results'
